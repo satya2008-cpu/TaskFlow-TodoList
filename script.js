@@ -1,4 +1,4 @@
-// TaskFlow - To-Do List Application
+// TaskFlow - Advanced To-Do List Application
 
 class TaskManager {
     constructor() {
@@ -9,30 +9,64 @@ class TaskManager {
 
     init() {
         this.setupEventListeners();
+        this.updateCurrentDate();
         this.render();
+        setInterval(() => this.updateCurrentDate(), 1000);
     }
 
     setupEventListeners() {
         const addBtn = document.getElementById('addBtn');
         const taskInput = document.getElementById('taskInput');
         const filterBtns = document.querySelectorAll('.filter-btn');
+        const navItems = document.querySelectorAll('.nav-item');
         const clearBtn = document.getElementById('clearBtn');
 
+        // Add task listeners
         addBtn.addEventListener('click', () => this.addTask());
         taskInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.addTask();
         });
 
+        // Filter button listeners (main content)
         filterBtns.forEach((btn) => {
             btn.addEventListener('click', (e) => {
                 filterBtns.forEach((b) => b.classList.remove('active'));
                 e.target.classList.add('active');
+                navItems.forEach((item) => item.classList.remove('active'));
                 this.currentFilter = e.target.dataset.filter;
                 this.render();
             });
         });
 
+        // Navigation items listeners (sidebar)
+        navItems.forEach((item) => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                navItems.forEach((i) => i.classList.remove('active'));
+                item.classList.add('active');
+                filterBtns.forEach((btn) => btn.classList.remove('active'));
+                const filterValue = item.dataset.filter;
+                filterBtns.forEach((btn) => {
+                    if (btn.dataset.filter === filterValue) {
+                        btn.classList.add('active');
+                    }
+                });
+                this.currentFilter = filterValue;
+                this.render();
+            });
+        });
+
+        // Clear completed listener
         clearBtn.addEventListener('click', () => this.clearCompleted());
+    }
+
+    updateCurrentDate() {
+        const dateEl = document.getElementById('currentDate');
+        if (dateEl) {
+            const options = { weekday: 'long', month: 'short', day: 'numeric' };
+            const today = new Date().toLocaleDateString('en-US', options).toUpperCase();
+            dateEl.textContent = today;
+        }
     }
 
     addTask() {
@@ -40,7 +74,12 @@ class TaskManager {
         const taskText = input.value.trim();
 
         if (!taskText) {
-            alert('Please enter a task!');
+            this.showNotification('Please enter a task!', 'warning');
+            return;
+        }
+
+        if (taskText.length > 500) {
+            this.showNotification('Task is too long (max 500 characters)', 'warning');
             return;
         }
 
@@ -48,20 +87,30 @@ class TaskManager {
             id: Date.now(),
             text: taskText,
             completed: false,
-            createdAt: new Date().toLocaleString(),
+            createdAt: new Date().toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }),
         };
 
         this.tasks.push(task);
         this.saveTasks();
         input.value = '';
         input.focus();
+        this.showNotification('Task added successfully!', 'success');
         this.render();
     }
 
     deleteTask(id) {
-        this.tasks = this.tasks.filter((task) => task.id !== id);
-        this.saveTasks();
-        this.render();
+        if (confirm('Are you sure you want to delete this task?')) {
+            this.tasks = this.tasks.filter((task) => task.id !== id);
+            this.saveTasks();
+            this.showNotification('Task deleted', 'info');
+            this.render();
+        }
     }
 
     toggleTask(id) {
@@ -77,10 +126,20 @@ class TaskManager {
         const task = this.tasks.find((t) => t.id === id);
         if (!task) return;
 
-        const newText = prompt('Edit task:', task.text);
-        if (newText && newText.trim()) {
-            task.text = newText.trim();
+        const newText = prompt('Edit your task:', task.text);
+        if (newText !== null) {
+            const trimmed = newText.trim();
+            if (trimmed === '') {
+                this.showNotification('Task cannot be empty', 'warning');
+                return;
+            }
+            if (trimmed.length > 500) {
+                this.showNotification('Task is too long (max 500 characters)', 'warning');
+                return;
+            }
+            task.text = trimmed;
             this.saveTasks();
+            this.showNotification('Task updated successfully!', 'success');
             this.render();
         }
     }
@@ -88,13 +147,14 @@ class TaskManager {
     clearCompleted() {
         const completedCount = this.tasks.filter((t) => t.completed).length;
         if (completedCount === 0) {
-            alert('No completed tasks to clear!');
+            this.showNotification('No completed tasks to clear', 'info');
             return;
         }
 
-        if (confirm(`Clear ${completedCount} completed task(s)?`)) {
+        if (confirm(`Delete ${completedCount} completed task(s)?`)) {
             this.tasks = this.tasks.filter((t) => !t.completed);
             this.saveTasks();
+            this.showNotification(`Cleared ${completedCount} task(s)`, 'info');
             this.render();
         }
     }
@@ -145,8 +205,12 @@ class TaskManager {
                         <span class="task-time">${task.createdAt}</span>
                     </div>
                     <div class="task-actions">
-                        <button class="task-btn edit-btn" aria-label="Edit task">Edit</button>
-                        <button class="task-btn delete-btn" aria-label="Delete task">Delete</button>
+                        <button class="task-btn edit-btn" aria-label="Edit task">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="task-btn delete-btn" aria-label="Delete task">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                 `;
 
@@ -178,13 +242,24 @@ class TaskManager {
         return div.innerHTML;
     }
 
+    showNotification(message, type = 'info') {
+        // Simple notification - can be enhanced with a toast library
+        // For now, using console log as fallback
+        console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+
     saveTasks() {
         localStorage.setItem('tasks', JSON.stringify(this.tasks));
     }
 
     loadTasks() {
-        const saved = localStorage.getItem('tasks');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem('tasks');
+            return saved ? JSON.parse(saved) : [];
+        } catch (error) {
+            console.error('Error loading tasks:', error);
+            return [];
+        }
     }
 }
 
